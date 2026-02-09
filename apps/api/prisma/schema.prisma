@@ -1,0 +1,573 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USUARIOS Y ROLES
+// ============================================
+
+model Usuario {
+  id            String    @id @default(uuid())
+  username      String    @unique
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  nombre        String
+  apellidos     String
+  rol           Rol       @default(OPERADOR)
+  activo        Boolean   @default(true)
+  ultimoAcceso  DateTime? @map("ultimo_acceso")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  refreshTokens RefreshToken[]
+
+  @@map("usuarios")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  usuarioId String    @map("usuario_id")
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+enum Rol {
+  ADMIN
+  OPERADOR
+  CONSULTA
+
+  @@map("roles")
+}
+
+// ============================================
+// NOMENCLADORES
+// ============================================
+
+model Provincia {
+  id          String    @id @default(uuid())
+  codigo      String    @unique
+  nombre      String
+  activo      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  municipios  Municipio[]
+  profesores  Profesor[]
+
+  @@map("provincias")
+}
+
+model Municipio {
+  id            String    @id @default(uuid())
+  codigo        String
+  nombre        String
+  provinciaId   String    @map("provincia_id")
+  activo        Boolean   @default(true)
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  provincia     Provincia @relation(fields: [provinciaId], references: [id])
+  profesores    Profesor[]
+
+  @@unique([codigo, provinciaId])
+  @@map("municipios")
+}
+
+model Pais {
+  id          String    @id @default(uuid())
+  codigo      String    @unique
+  nombre      String
+  nombreEs    String    @map("nombre_es")
+  activo      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  contratos   Contrato[]
+  actasExtranjeria ActaExtranjeria[]
+  profesoresNacimiento Profesor[] @relation("PaisNacimiento")
+
+  @@map("paises")
+}
+
+model Cargo {
+  id          String    @id @default(uuid())
+  codigo      String    @unique
+  nombre      String
+  descripcion String?
+  activo      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  profesores  Profesor[]
+
+  @@map("cargos")
+}
+
+model Especialidad {
+  id          String    @id @default(uuid())
+  codigo      String    @unique
+  nombre      String
+  descripcion String?
+  activo      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  profesores  Profesor[]
+
+  @@map("especialidades")
+}
+
+model CategoriaDocente {
+  id          String    @id @default(uuid())
+  codigo      String    @unique
+  nombre      String
+  descripcion String?
+  activo      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  profesores  Profesor[]
+
+  @@map("categorias_docentes")
+}
+
+// ============================================
+// PROFESORES (POTENCIAL)
+// ============================================
+
+model Profesor {
+  id                    String    @id @default(uuid())
+  
+  // Datos personales
+  ci                    String    @unique
+  nombre                String
+  apellidos             String
+  fechaNacimiento       DateTime? @map("fecha_nacimiento")
+  edad                  Int?
+  sexo                  Sexo?
+  colorPiel             String?   @map("color_piel")
+  colorOjos             String?   @map("color_ojos")
+  colorPelo             String?   @map("color_pelo")
+  estatura              Float?    // en metros
+  peso                  Float?    // en kg
+  senasParticulares     String?   @map("senas_particulares")
+  direccion             String?
+  
+  // Datos de nacimiento
+  paisNacimientoId      String?   @map("pais_nacimiento_id")
+  ciudadEnElExtranjero  String?   @map("ciudad_en_el_extranjero")
+  
+  // Dirección desglosada (para formulario X-22)
+  calle                 String?
+  numero                String?
+  entreCalles           String?   @map("entre_calles")
+  apto                  String?
+  cpa                   String?
+  finca                 String?
+  localidad             String?
+  circunscripcion       String?
+  carretera             String?
+  km                    String?
+  
+  // Relaciones geográficas
+  provinciaId           String?   @map("provincia_id")
+  municipioId           String?   @map("municipio_id")
+  
+  // Datos laborales
+  cargoId               String?   @map("cargo_id")
+  especialidadId        String?   @map("especialidad_id")
+  categoriaDocenteId    String?   @map("categoria_docente_id")
+  anosExperiencia       Int       @default(0) @map("anos_experiencia")
+  
+  // Datos familiares
+  estadoCivil           EstadoCivil? @map("estado_civil")
+  cantidadHijos         Int       @default(0) @map("cantidad_hijos")
+  nombrePadre           String?   @map("nombre_padre")
+  nombreMadre           String?   @map("nombre_madre")
+  conyuge               String?
+  
+  // Militancia
+  militanciaPCC         Boolean   @default(false) @map("militancia_pcc")
+  militanciaUJC         Boolean   @default(false) @map("militancia_ujc")
+  
+  // Acción de colaboración (Sale por)
+  accionColaboracion    String?   @map("accion_colaboracion")
+  
+  // Familiar para aviso en caso de emergencia
+  familiarAvisoNombre   String?   @map("familiar_aviso_nombre")
+  familiarAvisoTelefono String?   @map("familiar_aviso_telefono")
+   
+  // Datos de contacto
+  telefonoFijo          String?   @map("telefono_fijo")
+  telefonoMovil         String?   @map("telefono_movil")
+  email                 String?
+  
+  // Datos académicos
+  nivelIngles           NivelIngles? @map("nivel_ingles")
+  anoGraduado           Int?        @map("ano_graduado")
+  centroGraduacion      String?     @map("centro_graduacion")
+  notaPromedio          Float?      @map("nota_promedio")
+  
+  // Estado en el potencial
+  estadoPotencial       EstadoPotencial @default(ACTIVO) @map("estado_potencial")
+  observaciones         String?
+  
+  // Metadatos
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  createdBy             String?   @map("created_by")
+  updatedBy             String?   @map("updated_by")
+
+  // Relaciones
+  provincia             Provincia? @relation(fields: [provinciaId], references: [id])
+  municipio             Municipio? @relation(fields: [municipioId], references: [id])
+  paisNacimiento        Pais?     @relation("PaisNacimiento", fields: [paisNacimientoId], references: [id])
+  cargo                 Cargo?    @relation(fields: [cargoId], references: [id])
+  especialidad          Especialidad? @relation(fields: [especialidadId], references: [id])
+  categoriaDocente      CategoriaDocente? @relation(fields: [categoriaDocenteId], references: [id])
+  
+  pasaportes            Pasaporte[]
+  contratos             Contrato[]
+  actasExtranjeria      ActaExtranjeria[]
+
+  @@index([nombre])
+  @@index([apellidos])
+  @@index([ci])
+  @@index([provinciaId])
+  @@index([estadoPotencial])
+  @@map("profesores")
+}
+
+enum Sexo {
+  MASCULINO
+  FEMENINO
+
+  @@map("sexos")
+}
+
+enum EstadoCivil {
+  SOLTERO
+  CASADO
+  DIVORCIADO
+  VIUDO
+  UNION_ESTABLE
+
+  @@map("estados_civiles")
+}
+
+enum NivelIngles {
+  BASICO
+  INTERMEDIO
+  AVANZADO
+  NATIVO
+
+  @@map("niveles_ingles")
+}
+
+enum EstadoPotencial {
+  ACTIVO
+  EN_PROCESO
+  CONTRATADO
+  BAJA
+  SUSPENDIDO
+
+  @@map("estados_potencial")
+}
+
+// ============================================
+// PASAPORTES Y VISAS
+// ============================================
+
+model Pasaporte {
+  id                String    @id @default(uuid())
+  profesorId        String    @map("profesor_id")
+  tipo              TipoPasaporte
+  numero            String
+  numeroArchivo     String?   @map("numero_archivo") // Formato: A-0001, B-0002, etc.
+  fechaExpedicion   DateTime? @map("fecha_expedicion")
+  fechaVencimiento  DateTime  @map("fecha_vencimiento")
+  lugarExpedicion   String?   @map("lugar_expedicion")
+  observaciones     String?
+  activo            Boolean   @default(true)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  profesor          Profesor  @relation(fields: [profesorId], references: [id], onDelete: Cascade)
+  visas             Visa[]
+
+  @@unique([numero])
+  @@index([profesorId])
+  @@index([fechaVencimiento])
+  @@map("pasaportes")
+}
+
+enum TipoPasaporte {
+  ORDINARIO
+  OFICIAL
+  DIPLOMATICO
+
+  @@map("tipos_pasaporte")
+}
+
+model Visa {
+  id                String    @id @default(uuid())
+  pasaporteId       String    @map("pasaporte_id")
+  tipo              String
+  numero            String?
+  fechaEmision      DateTime  @map("fecha_emision")
+  fechaVencimiento  DateTime  @map("fecha_vencimiento")
+  paisEmision       String    @map("pais_emision")
+  numeroEntradas    Int       @default(1) @map("numero_entradas")
+  duracionDias      Int       @map("duracion_dias")
+  observaciones     String?
+  activa            Boolean   @default(true)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  pasaporte         Pasaporte @relation(fields: [pasaporteId], references: [id], onDelete: Cascade)
+
+  @@index([pasaporteId])
+  @@index([fechaVencimiento])
+  @@map("visas")
+}
+
+// ============================================
+// CONTRATOS Y PRORROGAS
+// ============================================
+
+model Contrato {
+  id                    String    @id @default(uuid())
+  
+  // Identificación
+  numeroConsecutivo     Int       @map("numero_consecutivo")
+  ano                   Int
+  
+  // Relaciones
+  profesorId            String    @map("profesor_id")
+  paisId                String    @map("pais_id")
+  
+  // Fechas de la misión
+  fechaInicio           DateTime  @map("fecha_inicio")
+  fechaFin              DateTime  @map("fecha_fin")
+  
+  // Detalles del contrato
+  funcion               String
+  centroTrabajo         String    @map("centro_trabajo")
+  direccionTrabajo      String?   @map("direccion_trabajo")
+  
+  // Información salarial
+  salarioMensual        Decimal?  @map("salario_mensual") @db.Decimal(12, 2)
+  moneda                String    @default("USD")
+  
+  // Estado
+  estado                EstadoContrato @default(ACTIVO)
+  
+  // Fechas importantes
+  fechaFirma            DateTime? @map("fecha_firma")
+  fechaRecepcion        DateTime? @map("fecha_recepcion")
+  fechaCierre           DateTime? @map("fecha_cierre")
+  motivoCierre          String?   @map("motivo_cierre")
+  
+  // Documentos
+  documentoUrl          String?   @map("documento_url")
+  
+  // Observaciones
+  observaciones         String?
+  
+  // Metadatos
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  createdBy             String?   @map("created_by")
+  updatedBy             String?   @map("updated_by")
+
+  // Relaciones
+  profesor              Profesor  @relation(fields: [profesorId], references: [id])
+  pais                  Pais      @relation(fields: [paisId], references: [id])
+  prorrogas             Prorroga[]
+
+  @@unique([numeroConsecutivo, ano])
+  @@index([profesorId])
+  @@index([fechaInicio, fechaFin])
+  @@index([estado])
+  @@map("contratos")
+}
+
+enum EstadoContrato {
+  ACTIVO
+  PRORROGADO
+  CERRADO
+  CANCELADO
+
+  @@map("estados_contrato")
+}
+
+model Prorroga {
+  id                String    @id @default(uuid())
+  contratoId        String    @map("contrato_id")
+  numeroProrroga    Int       @map("numero_prorroga")
+  fechaDesde        DateTime  @map("fecha_desde")
+  fechaHasta        DateTime  @map("fecha_hasta")
+  motivo            String
+  observaciones     String?
+  documentoUrl      String?   @map("documento_url")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  createdBy         String?   @map("created_by")
+
+  contrato          Contrato  @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  @@unique([contratoId, numeroProrroga])
+  @@index([contratoId])
+  @@map("prorrogas")
+}
+
+// ============================================
+// CONFIGURACION DEL SISTEMA
+// ============================================
+
+model Configuracion {
+  id                String    @id @default(uuid())
+  clave             String    @unique
+  valor             String
+  descripcion       String?
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  updatedBy         String?   @map("updated_by")
+
+  @@map("configuraciones")
+}
+
+// ============================================
+// FIRMAS AUTORIZADAS (solo 2 personas)
+// ============================================
+
+model FirmaAutorizada {
+  id                String    @id @default(uuid())
+  nombre            String
+  apellidos         String
+  cargo             String
+  activa            Boolean   @default(true)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@unique([nombre, apellidos])
+  @@map("firmas_autorizadas")
+}
+
+// ============================================
+// ACTAS DE EXTRANJERIA
+// ============================================
+
+model ActaExtranjeria {
+  id                String    @id @default(uuid())
+  numeroActa        String    @map("numero_acta")
+  ano               Int
+  profesorId        String    @map("profesor_id")
+  fechaActa         DateTime  @map("fecha_acta")
+  funcion           String    // Función que desempeñará
+  paisDestinoId     String    @map("pais_destino_id")
+  observaciones     String?
+  documentoUrl      String?   @map("documento_url")
+  createdBy         String    @map("created_by")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones
+  profesor          Profesor  @relation(fields: [profesorId], references: [id])
+  paisDestino       Pais      @relation(fields: [paisDestinoId], references: [id])
+
+  @@unique([numeroActa, ano])
+  @@index([profesorId])
+  @@index([fechaActa])
+  @@map("actas_extranjeria")
+}
+
+// ============================================
+// HISTORIAL DE IMPORTACIONES
+// ============================================
+
+model ImportacionHistorial {
+  id                String    @id @default(uuid())
+  tipo              String    // 'PASAPORTES', 'PROFESORES', etc.
+  nombreArchivo     String    @map("nombre_archivo")
+  totalRegistros    Int       @map("total_registros")
+  exitosos          Int
+  errores           Int
+  saltados          Int       @map("saltados") // Ya existían
+  detalle           Json      // Array con detalle de cada registro procesado
+  userId            String    @map("user_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("importaciones_historial")
+}
+
+// ============================================
+// LOGS DE AUDITORIA
+// ============================================
+
+model LogAuditoria {
+  id            String    @id @default(uuid())
+  tabla         String
+  operacion     OperacionAuditoria
+  registroId    String    @map("registro_id")
+  datosAnteriores Json?   @map("datos_anteriores")
+  datosNuevos   Json?     @map("datos_nuevos")
+  usuarioId     String?   @map("usuario_id")
+  ipAddress     String?   @map("ip_address")
+  userAgent     String?   @map("user_agent")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([tabla, registroId])
+  @@index([createdAt])
+  @@map("logs_auditoria")
+}
+
+enum OperacionAuditoria {
+  CREATE
+  UPDATE
+  DELETE
+
+  @@map("operaciones_auditoria")
+}
+
+// ============================================
+// PAPELERA DE RECICLAJE
+// ============================================
+
+model Papelera {
+  id            String    @id @default(uuid())
+  tipo          TipoRegistroPapelera
+  registroId    String    @map("registro_id")
+  datos         Json      // Datos completos del registro eliminado
+  relacionados  Json?     // Datos de tablas relacionadas (pasaportes, contratos, etc)
+  eliminadoPor  String    @map("eliminado_por")
+  nombreUsuario String?   @map("nombre_usuario") // Nombre del usuario que eliminó
+  motivo        String?   // Motivo de la eliminación
+  restoredAt    DateTime? @map("restored_at")
+  restoredBy    String?   @map("restored_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([tipo])
+  @@index([registroId])
+  @@index([eliminadoPor])
+  @@index([createdAt])
+  @@index([restoredAt])
+  @@map("papelera")
+}
+
+enum TipoRegistroPapelera {
+  PROFESOR
+  CONTRATO
+  PASAPORTE
+  VISA
+  PRORROGA
+  USUARIO
+
+  @@map("tipos_registro_papelera")
+}
