@@ -1,0 +1,23 @@
+# Dockerfile.simple - Solo para runtime (no build)
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Crear usuario no-root
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nextjs -u 1001
+
+# Copiar el build standalone (generado previamente con pnpm build)
+COPY .next/standalone ./
+COPY .next/static ./.next/static
+COPY public ./public
+
+# Permisos
+RUN chown -R nextjs:nodejs /app
+USER nextjs
+
+EXPOSE 3000
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
+
+CMD ["node", "server.js"]

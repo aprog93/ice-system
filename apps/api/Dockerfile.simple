@@ -1,0 +1,30 @@
+# Dockerfile.simple - Solo para runtime
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Instalar dependencias del sistema
+RUN apk add --no-cache openssl dumb-init
+
+# Crear usuario no-root
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nestjs -u 1001
+
+# Copiar archivos del build
+COPY dist ./dist
+COPY prisma ./prisma
+COPY package.json ./
+COPY node_modules ./node_modules
+COPY templates ./templates
+
+# Crear directorio uploads
+RUN mkdir -p uploads
+
+# Permisos
+RUN chown -R nestjs:nodejs /app
+USER nestjs
+
+EXPOSE 3001
+ENV PORT 3001
+
+CMD ["dumb-init", "node", "dist/main"]

@@ -169,6 +169,7 @@ export default function NuevaActaPage() {
                 observaciones: watch("observaciones"),
                 profesorId: watch("profesorId"),
                 paisDestinoId: watch("paisDestinoId"),
+                createdBy: "preview-user",
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
                 profesor: profesores.find((p) => p.id === watch("profesorId")),

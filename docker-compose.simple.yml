@@ -1,0 +1,57 @@
+# Docker Compose para usar con builds locales (no build en Docker)
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ice-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ice_user
+      POSTGRES_PASSWORD: ice_password_123
+      POSTGRES_DB: ice_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ice_user -d ice_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.simple
+    container_name: ice-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://ice_user:ice_password_123@postgres:5432/ice_db?schema=public
+      JWT_SECRET: super-secret-jwt-key-123456789
+      JWT_REFRESH_SECRET: super-secret-refresh-key-123456789
+    ports:
+      - "3001:3001"
+    volumes:
+      - api_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.simple
+    container_name: ice-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  api_uploads:
