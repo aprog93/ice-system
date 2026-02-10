@@ -504,7 +504,7 @@ export default function PasaporteDetallePage() {
                 </h3>
                 <p className="text-sm text-muted-foreground text-center max-w-md mt-2">
                   Este pasaporte no tiene visas asociadas. Puede agregar visas
-                  usando el botón "Agregar Visa".
+                  usando el botón &quot;Agregar Visa&quot;.
                 </p>
                 {canEdit && (
                   <Button

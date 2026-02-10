@@ -267,7 +267,7 @@ export default function ContratoDetallePage() {
               <h3 className="text-lg font-semibold">Sin prórrogas</h3>
               <p className="text-sm text-muted-foreground max-w-md mt-2">
                 Este contrato no tiene prórrogas registradas. Hacé clic en
-                "Nueva Prórroga" para extender el contrato.
+                &quot;Nueva Prórroga&quot; para extender el contrato.
               </p>
               <Button className="mt-4" onClick={() => setShowModal(true)}>
                 <Plus className="mr-2 h-4 w-4" />

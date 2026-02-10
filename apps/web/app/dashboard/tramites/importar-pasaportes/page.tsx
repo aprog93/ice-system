@@ -392,8 +392,8 @@ export default function ImportarPasaportesPage() {
                 (opcional)
               </li>
               <li>
-                <strong>Colaborador</strong> - Formato: "APELLIDOS, NOMBRE"
-                (requerido)
+                <strong>Colaborador</strong> - Formato: &quot;APELLIDOS,
+                NOMBRE&quot; (requerido)
               </li>
               <li>
                 <strong>Fecha Vencimiento</strong> - Formato: MM/DD/YYYY
