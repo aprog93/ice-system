@@ -1,0 +1,99 @@
+version: "3.9"
+
+services:
+  # Traefik Reverse Proxy
+  traefik:
+    image: traefik:v3.0
+    container_name: ice-traefik
+    restart: unless-stopped
+    command:
+      # Enable Docker provider
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=ice-network"
+
+      # Entrypoints
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+
+      # Dashboard (optional, disable in production if not needed)
+      - "--api.dashboard=true"
+
+      # Logging
+      - "--log.level=INFO"
+      - "--accesslog=true"
+
+      # Let's Encrypt (for HTTPS)
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@localhost}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+
+      # Redirect HTTP to HTTPS (optional)
+      # - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      # - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080" # Traefik Dashboard
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+
+    networks:
+      - ice-network
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.entrypoints=web"
+
+  # ICE Web (Next.js)
+  web:
+    extends:
+      file: docker-compose.yml
+      service: web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.web.entrypoints=web"
+      - "traefik.http.services.web.loadbalancer.server.port=3000"
+      # HTTPS configuration (uncomment when using Let's Encrypt)
+      # - "traefik.http.routers.web.tls=true"
+      # - "traefik.http.routers.web.tls.certresolver=letsencrypt"
+      # - "traefik.http.routers.web.entrypoints=websecure"
+
+  # ICE API (NestJS)
+  api:
+    extends:
+      file: docker-compose.yml
+      service: api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.api.entrypoints=web"
+      - "traefik.http.services.api.loadbalancer.server.port=3001"
+      - "traefik.http.middlewares.api-strip.stripprefix.prefixes=/api"
+      - "traefik.http.routers.api.middlewares=api-strip"
+      # HTTPS configuration (uncomment when using Let's Encrypt)
+      # - "traefik.http.routers.api.tls=true"
+      # - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      # - "traefik.http.routers.api.entrypoints=websecure"
+
+  # Database (same as main compose)
+  postgres:
+    extends:
+      file: docker-compose.yml
+      service: postgres
+
+networks:
+  ice-network:
+    external: true
+    name: ice-network
+
+volumes:
+  postgres_data:
+  api_uploads:
+  letsencrypt:

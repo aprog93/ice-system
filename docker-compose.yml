@@ -1,24 +1,33 @@
-version: '3.8'
+version: "3.8"
 
 services:
+  # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
     container_name: ice-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ice_user
-      POSTGRES_PASSWORD: ice_password
-      POSTGRES_DB: ice_db
+      POSTGRES_USER: ${DB_USER:-ice_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ice_password}
+      POSTGRES_DB: ${DB_NAME:-ice_db}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ice_user -d ice_db"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DB_USER:-ice_user} -d ${DB_NAME:-ice_db}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - ice-network
 
+  # Backend API
   api:
     build:
       context: .
@@ -27,20 +36,34 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://ice_user:ice_password@postgres:5432/ice_db?schema=public
-      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your-super-secret-refresh-key-change-in-production}
-      JWT_ACCESS_EXPIRATION: 15m
-      JWT_REFRESH_EXPIRATION: 7d
       PORT: 3001
+      DATABASE_URL: postgresql://${DB_USER:-ice_user}:${DB_PASSWORD:-ice_password}@postgres:5432/${DB_NAME:-ice_db}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your-refresh-secret-change-in-production}
+      JWT_ACCESS_EXPIRATION: ${JWT_ACCESS_EXPIRATION:-15m}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-7d}
     ports:
       - "3001:3001"
+    volumes:
+      - api_uploads:/app/uploads
+      - ./apps/api/templates:/app/templates:ro
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - api_uploads:/app/uploads
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "require(''http'').get(''http://localhost:3001/health/live'', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ice-network
 
+  # Frontend (Next.js)
   web:
     build:
       context: .
@@ -49,12 +72,49 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
     ports:
       - "3000:3000"
     depends_on:
       - api
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "require(''http'').get(''http://localhost:3000'', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ice-network
+
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: ice-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - web
+      - api
+    networks:
+      - ice-network
+    profiles:
+      - with-nginx
 
 volumes:
   postgres_data:
+    driver: local
   api_uploads:
+    driver: local
+
+networks:
+  ice-network:
+    driver: bridge

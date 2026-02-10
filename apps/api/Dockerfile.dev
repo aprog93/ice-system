@@ -1,0 +1,30 @@
+# Development Dockerfile for NestJS API
+FROM node:20-alpine
+
+# Install dependencies
+RUN apk add --no-cache libc6-compat openssl
+
+# Install pnpm
+RUN npm install -g pnpm@9.0.0
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
+COPY apps/api/package.json ./apps/api/
+
+# Install dependencies
+RUN pnpm install
+
+# Copy source code
+COPY apps/api ./apps/api
+
+# Generate Prisma Client
+RUN cd apps/api && npx prisma generate
+
+# Expose port
+EXPOSE 3001
+
+# Start development server with hot reload
+CMD ["pnpm", "dev"]

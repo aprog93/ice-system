@@ -1,0 +1,73 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: ice-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ice_user
+      POSTGRES_PASSWORD: ice_password
+      POSTGRES_DB: ice_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ice_user -d ice_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Backend API (Development)
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile.dev
+    container_name: ice-api-dev
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgresql://ice_user:ice_password@postgres:5432/ice_db?schema=public
+      JWT_SECRET: dev-jwt-secret-key
+      JWT_REFRESH_SECRET: dev-refresh-secret-key
+      JWT_ACCESS_EXPIRATION: 15m
+      JWT_REFRESH_EXPIRATION: 7d
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./apps/api:/app/apps/api
+      - ./apps/api/node_modules:/app/apps/api/node_modules
+      - /app/node_modules
+      - api_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: pnpm dev
+
+  # Frontend (Development)
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile.dev
+    container_name: ice-web-dev
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/web:/app/apps/web
+      - ./apps/web/node_modules:/app/apps/web/node_modules
+      - /app/node_modules
+    depends_on:
+      - api
+    command: pnpm dev
+
+volumes:
+  postgres_data:
+  api_uploads:

@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+  # Cloudflare Tunnel
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: ice-cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - ice-network
+    depends_on:
+      - web
+      - api
+
+  # ICE Web (Next.js)
+  web:
+    extends:
+      file: docker-compose.yml
+      service: web
+    networks:
+      - ice-network
+
+  # ICE API (NestJS)
+  api:
+    extends:
+      file: docker-compose.yml
+      service: api
+    networks:
+      - ice-network
+
+  # Database
+  postgres:
+    extends:
+      file: docker-compose.yml
+      service: postgres
+    networks:
+      - ice-network
+
+networks:
+  ice-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  api_uploads:
