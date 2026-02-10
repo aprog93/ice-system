@@ -128,9 +128,16 @@ export class ActasExtranjeriaService {
       throw new NotFoundException('País no encontrado');
     }
 
+    // Convertir fecha string (YYYY-MM-DD) a DateTime ISO-8601
+    const fechaActa = new Date(data.fechaActa + 'T00:00:00');
+
     return this.prisma.actaExtranjeria.create({
       data: {
-        ...data,
+        numeroActa: data.numeroActa,
+        ano: data.ano,
+        profesorId: data.profesorId,
+        paisDestinoId: data.paisDestinoId,
+        fechaActa: fechaActa,
         funcion: data.funcion.toUpperCase(),
         observaciones: data.observaciones?.toUpperCase(),
         createdBy: userId,
@@ -176,13 +183,20 @@ export class ActasExtranjeriaService {
       }
     }
 
+    // Convertir fecha string (YYYY-MM-DD) a DateTime ISO-8601 si se proporciona
+    const updateData: any = {
+      numeroActa: data.numeroActa,
+      ano: data.ano,
+      profesorId: data.profesorId,
+      paisDestinoId: data.paisDestinoId,
+      fechaActa: new Date(data.fechaActa + 'T00:00:00'),
+      funcion: data.funcion.toUpperCase(),
+      observaciones: data.observaciones?.toUpperCase(),
+    };
+
     return this.prisma.actaExtranjeria.update({
       where: { id },
-      data: {
-        ...data,
-        funcion: data.funcion.toUpperCase(),
-        observaciones: data.observaciones?.toUpperCase(),
-      },
+      data: updateData,
       include: {
         profesor: {
           select: {

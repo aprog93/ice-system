@@ -13,8 +13,8 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [credentials, setCredentials] = useState({
-    username: "",
-    password: "",
+    username: "admin",
+    password: "admin123",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -166,8 +166,23 @@ export default function LoginPage() {
           </button>
         </form>
 
+        {/* Test Credentials */}
+        <div className="mt-6 p-3 bg-white/10 backdrop-blur-sm rounded-lg border border-white/20">
+          <p className="text-xs text-white/70 text-center font-medium">
+            Credenciales de prueba
+          </p>
+          <div className="flex justify-center gap-4 mt-1">
+            <span className="text-xs text-white/90">
+              <span className="text-white/60">Usuario:</span> admin
+            </span>
+            <span className="text-xs text-white/90">
+              <span className="text-white/60">Contraseña:</span> admin123
+            </span>
+          </div>
+        </div>
+
         {/* Footer */}
-        <div className="mt-8 text-center">
+        <div className="mt-6 text-center">
           <p className="text-xs text-white/50 drop-shadow-md">
             ©{" "}
             {new Date().toLocaleDateString("es-ES", {

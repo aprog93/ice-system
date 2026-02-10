@@ -2,10 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { PrismaService } from '@/database/prisma.service';
 import { GenerarSolicitudDto } from '../dto/pasaporte.dto';
+import { PdfGeneratorService } from './pdf-generator.service';
 
 @Injectable()
 export class PdfService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private pdfGenerator: PdfGeneratorService,
+  ) {}
 
   // ============================================
   // SOLICITUD DE PASAPORTE
@@ -201,6 +205,7 @@ export class PdfService {
 
   // ============================================
   // ACTA DE EXTRANJERÍA DESDE MODELO ACTA
+  // Usa Puppeteer + HTML Template (formato oficial MININT)
   // ============================================
   async generarActaExtranjeriaPdf(actaId: string): Promise<Buffer> {
     const acta = await this.prisma.actaExtranjeria.findUnique({
@@ -221,198 +226,32 @@ export class PdfService {
     }
 
     const { profesor, paisDestino } = acta;
-    const firmas = await this.prisma.firmaAutorizada.findMany({
-      where: { activa: true },
-      orderBy: { createdAt: 'asc' },
-      take: 2,
-    });
 
-    const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([595.28, 841.89]);
-    const { width, height } = page.getSize();
-    const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    // Extraer fecha
+    const fechaActa = new Date(acta.fechaActa);
+    const dia = String(fechaActa.getDate()).padStart(2, '0');
+    const mes = String(fechaActa.getMonth() + 1).padStart(2, '0');
+    const ano = String(fechaActa.getFullYear());
 
-    let y = height - 50;
-    const margin = 50;
-
-    // Header
-    page.drawText('ACTA DE EXTRANJERÍA', {
-      x: margin,
-      y,
-      size: 18,
-      font: helveticaBold,
-    });
-
-    y -= 40;
-    page.drawText(`ACTA No. ${acta.numeroActa}/${acta.ano}`, {
-      x: width - 200,
-      y,
-      size: 12,
-      font: helveticaBold,
-    });
-
-    y -= 30;
-    page.drawText(`La Habana, ${new Date(acta.fechaActa).toLocaleDateString('es-CU')}`, {
-      x: width - 200,
-      y,
-      size: 10,
-      font: helveticaFont,
-    });
-
-    y -= 50;
-
-    // ACTA
-    page.drawText('ACTA', {
-      x: margin,
-      y,
-      size: 14,
-      font: helveticaBold,
-    });
-
-    y -= 30;
-
-    const actaTexto = `Por medio de la presente se certifica que el(la) ciudadano(a) ${profesor.nombre} ${profesor.apellidos}, 
-con Carnet de Identidad No. ${profesor.ci}, ha sido seleccionado(a) para cumplir misión de 
-cooperación internacional en calidad de ${acta.funcion}, en ${paisDestino.nombreEs}, 
-durante el período que se determine.
-
-El presente documento se expide a solicitud del interesado(a) para los trámites de 
-extranjería que sean necesarios.`;
-
-    const lines = actaTexto.split('\n');
-    for (const line of lines) {
-      page.drawText(line.trim(), {
-        x: margin,
-        y,
-        size: 11,
-        font: helveticaFont,
-        maxWidth: width - margin * 2,
-      });
-      y -= 20;
-    }
-
-    y -= 30;
-
-    // Observaciones
-    if (acta.observaciones) {
-      page.drawText('OBSERVACIONES:', {
-        x: margin,
-        y,
-        size: 12,
-        font: helveticaBold,
-      });
-
-      y -= 20;
-
-      page.drawText(acta.observaciones, {
-        x: margin,
-        y,
-        size: 10,
-        font: helveticaFont,
-        maxWidth: width - margin * 2,
-      });
-
-      y -= 40;
-    }
-
-    // DATOS DEL PROFESOR
-    page.drawText('DATOS DEL PROFESOR:', {
-      x: margin,
-      y,
-      size: 12,
-      font: helveticaBold,
-    });
-
-    y -= 25;
-
-    const drawField = (label: string, value: string) => {
-      page.drawText(`${label}:`, { x: margin, y, size: 10, font: helveticaBold });
-      page.drawText(value || 'N/A', { x: margin + 180, y, size: 10, font: helveticaFont });
-      y -= 18;
+    // Preparar datos para el template
+    const data = {
+      organismo: 'ICE',
+      clave: '',
+      numeroActa: `${acta.numeroActa}/${acta.ano}`,
+      esSalida: true,
+      esOficial: false, // Las actas de extranjería no especifican tipo de pasaporte
+      esMarino: false,
+      esCorriente: false,
+      nombreCompleto: `${profesor.apellidos}, ${profesor.nombre}`.toUpperCase(),
+      ciudadania: 'CUBA',
+      dia,
+      mes,
+      ano,
+      paisDestino: paisDestino?.nombreEs || '',
+      funcion: acta.funcion?.toUpperCase() || '',
     };
 
-    drawField('Nombre completo', `${profesor.nombre} ${profesor.apellidos}`);
-    drawField('CI', profesor.ci);
-    drawField('Edad', profesor.edad ? `${profesor.edad} años` : 'N/A');
-    drawField('Sexo', profesor.sexo || 'N/A');
-    drawField(
-      'Estado Civil',
-      profesor.estadoCivil ? profesor.estadoCivil.replace('_', ' ') : 'N/A',
-    );
-    drawField('Dirección', profesor.direccion || 'N/A');
-    drawField('Provincia', profesor.provincia?.nombre || 'N/A');
-    drawField('Municipio', profesor.municipio?.nombre || 'N/A');
-    drawField('Teléfono', profesor.telefonoMovil || profesor.telefonoFijo || 'N/A');
-    drawField('Email', profesor.email || 'N/A');
-
-    y -= 30;
-
-    // FIRMAS AUTORIZADAS
-    if (firmas.length >= 2) {
-      page.drawText('FIRMAS AUTORIZADAS:', {
-        x: margin,
-        y,
-        size: 12,
-        font: helveticaBold,
-      });
-
-      y -= 50;
-
-      // Firma 1
-      page.drawLine({
-        start: { x: margin, y },
-        end: { x: margin + 200, y },
-        thickness: 1,
-        color: rgb(0, 0, 0),
-      });
-      page.drawText(`${firmas[0].nombre} ${firmas[0].apellidos}`, {
-        x: margin,
-        y: y - 15,
-        size: 10,
-        font: helveticaFont,
-      });
-      page.drawText(firmas[0].cargo, {
-        x: margin,
-        y: y - 30,
-        size: 9,
-        font: helveticaFont,
-        color: rgb(0.4, 0.4, 0.4),
-      });
-
-      // Firma 2
-      page.drawLine({
-        start: { x: margin + 250, y },
-        end: { x: margin + 450, y },
-        thickness: 1,
-        color: rgb(0, 0, 0),
-      });
-      page.drawText(`${firmas[1].nombre} ${firmas[1].apellidos}`, {
-        x: margin + 250,
-        y: y - 15,
-        size: 10,
-        font: helveticaFont,
-      });
-      page.drawText(firmas[1].cargo, {
-        x: margin + 250,
-        y: y - 30,
-        size: 9,
-        font: helveticaFont,
-        color: rgb(0.4, 0.4, 0.4),
-      });
-    }
-
-    // Footer
-    page.drawText('Sistema ICE - Cooperación Internacional de Educadores', {
-      x: margin,
-      y: 30,
-      size: 8,
-      font: helveticaFont,
-      color: rgb(0.5, 0.5, 0.5),
-    });
-
-    const pdfBytes = await pdfDoc.save();
-    return Buffer.from(pdfBytes);
+    return this.pdfGenerator.generarActaExtranjeria(data);
   }
 
   // ============================================
@@ -1134,7 +973,7 @@ en el centro de trabajo ${contrato.centroTrabajo}.`;
   }
 
   // ============================================
-  // FORMULARIO X-22 A ICE - SOLICITUD DE PASAPORTE 
+  // FORMULARIO X-22 A ICE - SOLICITUD DE PASAPORTE
   // Formato exacto según docs/1.png y docs/2.png
   // ============================================
   async generarFormularioSolicitudPasaporteX22(pasaporteId: string): Promise<Buffer> {
@@ -1200,7 +1039,7 @@ en el centro de trabajo ${contrato.centroTrabajo}.`;
       const textWidth = f.widthOfTextAtSize(text || '', size);
       const startX = x + (w - textWidth) / 2;
       // Ajustar Y para que el texto quede centrado verticalmente
-      const startY = y + 3; 
+      const startY = y + 3;
       page.drawText(text || '', { x: startX, y: startY, size, font: f });
     };
 
@@ -1268,7 +1107,7 @@ en el centro de trabajo ${contrato.centroTrabajo}.`;
 
     // 4. SEGUNDA FILA: Sexo, Tipo Pasaporte, Tipo Solicitud
     const row2Height = 45;
-    
+
     // Sexo (12%)
     const sexoW = CONTENT_WIDTH * 0.12;
     drawBox(MARGIN, currentY - row2Height, sexoW, row2Height);
@@ -1285,7 +1124,8 @@ en el centro de trabajo ${contrato.centroTrabajo}.`;
     const tiposPas = ['Corriente', 'Servicio', 'Diplomático', 'Marino', 'Oficial'];
     tiposPas.forEach((tipo, i) => {
       const tipoLower = (pasaporte.tipo || '').toLowerCase();
-      const checked = tipoLower === tipo.toLowerCase() ||
+      const checked =
+        tipoLower === tipo.toLowerCase() ||
         (tipo === 'Corriente' && tipoLower === 'p') ||
         (tipo === 'Oficial' && tipoLower === 'o') ||
         (tipo === 'Diplomático' && tipoLower === 'd') ||
@@ -1351,8 +1191,19 @@ en el centro de trabajo ${contrato.centroTrabajo}.`;
 
     // Color Piel
     drawBox(MARGIN + padresW + estW + colorW, currentY - row4Height, colorW, row4Height);
-    drawTextCentered('Color de la Piel', MARGIN + padresW + estW + colorW, currentY - 8, colorW, 7, true);
-    [['Blanca', 'Negra'], ['Amarilla', 'Mulata'], ['Albina', '']].forEach((fila, row) => {
+    drawTextCentered(
+      'Color de la Piel',
+      MARGIN + padresW + estW + colorW,
+      currentY - 8,
+      colorW,
+      7,
+      true,
+    );
+    [
+      ['Blanca', 'Negra'],
+      ['Amarilla', 'Mulata'],
+      ['Albina', ''],
+    ].forEach((fila, row) => {
       fila.forEach((color, col) => {
         if (color) {
           const checked = (profesor.colorPiel || '').toLowerCase().includes(color.toLowerCase());
@@ -1373,8 +1224,19 @@ en el centro de trabajo ${contrato.centroTrabajo}.`;
 
     // Color Cabello
     drawBox(MARGIN + padresW + estW + colorW * 2, currentY - row4Height, colorW, row4Height);
-    drawTextCentered('Color Cabello', MARGIN + padresW + estW + colorW * 2, currentY - 8, colorW, 7, true);
-    [['Canoso', 'Castaño'], ['Negro', 'Rojo'], ['Rubio', 'Otros']].forEach((fila, row) => {
+    drawTextCentered(
+      'Color Cabello',
+      MARGIN + padresW + estW + colorW * 2,
+      currentY - 8,
+      colorW,
+      7,
+      true,
+    );
+    [
+      ['Canoso', 'Castaño'],
+      ['Negro', 'Rojo'],
+      ['Rubio', 'Otros'],
+    ].forEach((fila, row) => {
       fila.forEach((color, col) => {
         const checked = (profesor.colorPelo || '').toLowerCase().includes(color.toLowerCase());
         drawCheckbox(
@@ -1402,12 +1264,25 @@ en el centro de trabajo ${contrato.centroTrabajo}.`;
     drawBox(MARGIN, currentY - 15, CONTENT_WIDTH / 2, 15);
     drawTextCentered('CUBA', MARGIN, currentY - 8, CONTENT_WIDTH / 2, 9, true);
     drawBox(MARGIN + CONTENT_WIDTH / 2, currentY - 15, CONTENT_WIDTH / 2, 15);
-    drawTextCentered('CUBANA', MARGIN + CONTENT_WIDTH / 2, currentY - 8, CONTENT_WIDTH / 2, 9, true);
+    drawTextCentered(
+      'CUBANA',
+      MARGIN + CONTENT_WIDTH / 2,
+      currentY - 8,
+      CONTENT_WIDTH / 2,
+      9,
+      true,
+    );
     currentY -= 15;
 
     // 9. DATOS DE NACIMIENTO
     const colNac = CONTENT_WIDTH / 5;
-    const nacLabels = ['País Nacimiento', 'Provincia', 'Municipio/Ciudad', 'Ciudad en el extranjero', 'Ciudadanía'];
+    const nacLabels = [
+      'País Nacimiento',
+      'Provincia',
+      'Municipio/Ciudad',
+      'Ciudad en el extranjero',
+      'Ciudadanía',
+    ];
     const nacValues = [
       profesor.paisNacimiento?.nombre || 'Cuba',
       profesor.provincia?.nombre || '',
@@ -1446,7 +1321,14 @@ en el centro de trabajo ${contrato.centroTrabajo}.`;
     // 12. DIRECCIÓN ACTUAL - HEADER
     drawBox(MARGIN, currentY - 18, CONTENT_WIDTH, 18);
     drawTextCentered('CUBA', MARGIN + 50, currentY - 8, 50, 9, true);
-    drawTextCentered('Dirección Actual', MARGIN + CONTENT_WIDTH / 2 - 50, currentY - 8, CONTENT_WIDTH, 8, true);
+    drawTextCentered(
+      'Dirección Actual',
+      MARGIN + CONTENT_WIDTH / 2 - 50,
+      currentY - 8,
+      CONTENT_WIDTH,
+      8,
+      true,
+    );
     currentY -= 18;
 
     // 13. DIRECCIÓN FILA 1
@@ -1504,7 +1386,15 @@ en el centro de trabajo ${contrato.centroTrabajo}.`;
 
     // 1. SOLO PARA USO OFICIAL
     drawBox(MARGIN, currentY - 28, CONTENT_WIDTH, 28, page2);
-    drawTextCentered('SOLO PARA USO OFICIAL', MARGIN, currentY - 12, CONTENT_WIDTH, 12, true, page2);
+    drawTextCentered(
+      'SOLO PARA USO OFICIAL',
+      MARGIN,
+      currentY - 12,
+      CONTENT_WIDTH,
+      12,
+      true,
+      page2,
+    );
     currentY -= 28;
 
     // 2. DEL PASAPORTE ANTERIOR
@@ -1549,7 +1439,14 @@ en el centro de trabajo ${contrato.centroTrabajo}.`;
     });
 
     drawBox(MARGIN + tipoP2W, currentY - 45, razonW, 45, page2);
-    drawTextLeft('Razón de no disponibilidad:', MARGIN + tipoP2W + 5, currentY - 12, 7, true, page2);
+    drawTextLeft(
+      'Razón de no disponibilidad:',
+      MARGIN + tipoP2W + 5,
+      currentY - 12,
+      7,
+      true,
+      page2,
+    );
     currentY -= 45;
 
     // 5. LÍNEA DIVISORIA
@@ -1638,7 +1535,8 @@ en el centro de trabajo ${contrato.centroTrabajo}.`;
   }
 
   // ============================================
-  // ACTA DE EXTRANJERÍA - FORMATO OFICIAL
+  // ACTA DE EXTRANJERÍA - FORMATO OFICIAL MININT
+  // Usa Playwright + HTML Template
   // ============================================
   async generarActaExtranjeriaPasaporte(pasaporteId: string): Promise<Buffer> {
     const pasaporte = await this.prisma.pasaporte.findUnique({
@@ -1661,311 +1559,33 @@ en el centro de trabajo ${contrato.centroTrabajo}.`;
     }
 
     const profesor = pasaporte.profesor;
-    const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([595.28, 841.89]); // A4
-    const { width, height } = page.getSize();
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const tipoPas = pasaporte.tipo?.toUpperCase() || 'P';
 
-    const margin = 40;
-    let y = height - 50;
+    // Fecha actual para el acta
+    const hoy = new Date();
+    const dia = String(hoy.getDate()).padStart(2, '0');
+    const mes = String(hoy.getMonth() + 1).padStart(2, '0');
+    const ano = String(hoy.getFullYear());
 
-    // Funciones auxiliares
-    const drawBox = (x: number, yPos: number, w: number, h: number) => {
-      page.drawRectangle({
-        x,
-        y: yPos - h,
-        width: w,
-        height: h,
-        borderWidth: 1,
-        borderColor: rgb(0, 0, 0),
-      });
+    const data = {
+      organismo: 'ICE',
+      clave: '',
+      numeroActa: pasaporte.numeroArchivo || pasaporte.numero || 'S/N',
+      esSalida: true,
+      esOficial: tipoPas === 'O',
+      esMarino: tipoPas === 'M',
+      esCorriente: tipoPas === 'P',
+      nombreCompleto: `${profesor.apellidos || ''}, ${profesor.nombre || ''}`.toUpperCase().trim(),
+      ciudadania: 'CUBA',
+      dia,
+      mes,
+      ano,
+      paisDestino: '', // No tenemos país destino en el modelo Pasaporte
+      funcion:
+        profesor.cargo?.nombre?.toUpperCase() || profesor.especialidad?.nombre?.toUpperCase() || '',
     };
 
-    const drawText = (text: string, x: number, yPos: number, size = 9, bold = false) => {
-      page.drawText(text || '', { x, y: yPos, size, font: bold ? fontBold : font });
-    };
-
-    const drawCenteredText = (
-      text: string,
-      x: number,
-      yPos: number,
-      w: number,
-      size = 9,
-      bold = false,
-    ) => {
-      const textWidth = (bold ? fontBold : font).widthOfTextAtSize(text || '', size);
-      const centerX = x + (w - textWidth) / 2;
-      page.drawText(text || '', { x: centerX, y: yPos, size, font: bold ? fontBold : font });
-    };
-
-    const drawLabelValue = (
-      label: string,
-      value: string,
-      x: number,
-      yPos: number,
-      labelWidth: number,
-      valueWidth: number,
-    ) => {
-      drawText(label, x, yPos, 8, true);
-      drawBox(x, yPos + 3, labelWidth, 20);
-      drawBox(x + labelWidth, yPos + 3, valueWidth, 20);
-      drawCenteredText(value, x + labelWidth, yPos - 5, valueWidth, 9);
-    };
-
-    // ========== ENCABEZADO OFICIAL ==========
-    drawCenteredText(
-      'MINISTERIO DE RELACIONES EXTERIORES',
-      margin,
-      y,
-      width - 2 * margin,
-      12,
-      true,
-    );
-    y -= 18;
-    drawCenteredText('DIRECCIÓN DE EXTRANJERÍA', margin, y, width - 2 * margin, 11, true);
-    y -= 25;
-
-    // Título del Acta
-    drawBox(margin, y, width - 2 * margin, 30);
-    drawCenteredText('ACTA DE EXTRANJERÍA', margin, y - 12, width - 2 * margin, 14, true);
-    y -= 40;
-
-    // Fecha y Número de Acta
-    const halfWidth = (width - 2 * margin) / 2;
-    drawLabelValue('Fecha:', new Date().toLocaleDateString('es-CU'), margin, y, 60, halfWidth - 60);
-    drawLabelValue(
-      'No. Acta:',
-      pasaporte.numeroArchivo || '_________',
-      margin + halfWidth,
-      y,
-      70,
-      halfWidth - 70,
-    );
-    y -= 35;
-
-    // ========== DATOS DEL SOLICITANTE ==========
-    drawBox(margin, y, width - 2 * margin, 25);
-    drawCenteredText('DATOS DEL SOLICITANTE', margin, y - 10, width - 2 * margin, 10, true);
-    y -= 30;
-
-    // Nombres y Apellidos
-    const colWidth = (width - 2 * margin) / 4;
-    drawBox(margin, y, colWidth, 20);
-    drawCenteredText('Primer Apellido', margin, y - 6, colWidth, 7, true);
-    drawCenteredText(profesor.apellidos?.split(' ')[0] || '', margin, y - 14, colWidth, 9);
-
-    drawBox(margin + colWidth, y, colWidth, 20);
-    drawCenteredText('Segundo Apellido', margin + colWidth, y - 6, colWidth, 7, true);
-    drawCenteredText(
-      profesor.apellidos?.split(' ')[1] || '',
-      margin + colWidth,
-      y - 14,
-      colWidth,
-      9,
-    );
-
-    drawBox(margin + colWidth * 2, y, colWidth, 20);
-    drawCenteredText('Nombre(s)', margin + colWidth * 2, y - 6, colWidth, 7, true);
-    drawCenteredText(profesor.nombre || '', margin + colWidth * 2, y - 14, colWidth, 9);
-
-    drawBox(margin + colWidth * 3, y, colWidth, 20);
-    drawCenteredText('CI', margin + colWidth * 3, y - 6, colWidth, 7, true);
-    drawCenteredText(profesor.ci || '', margin + colWidth * 3, y - 14, colWidth, 9);
-    y -= 25;
-
-    // Datos de nacimiento
-    const nacWidth = (width - 2 * margin) / 3;
-    drawBox(margin, y, nacWidth, 20);
-    drawCenteredText('Fecha de Nacimiento', margin, y - 6, nacWidth, 7, true);
-    drawCenteredText(
-      profesor.fechaNacimiento
-        ? new Date(profesor.fechaNacimiento).toLocaleDateString('es-CU')
-        : '',
-      margin,
-      y - 14,
-      nacWidth,
-      9,
-    );
-
-    drawBox(margin + nacWidth, y, nacWidth, 20);
-    drawCenteredText('País de Nacimiento', margin + nacWidth, y - 6, nacWidth, 7, true);
-    drawCenteredText(
-      profesor.paisNacimiento?.nombre || 'Cuba',
-      margin + nacWidth,
-      y - 14,
-      nacWidth,
-      9,
-    );
-
-    drawBox(margin + nacWidth * 2, y, nacWidth, 20);
-    drawCenteredText('Sexo', margin + nacWidth * 2, y - 6, nacWidth, 7, true);
-    drawCenteredText(
-      profesor.sexo === 'MASCULINO' ? 'M' : 'F',
-      margin + nacWidth * 2,
-      y - 14,
-      nacWidth,
-      9,
-    );
-    y -= 25;
-
-    // ========== DATOS DEL PASAPORTE ==========
-    drawBox(margin, y, width - 2 * margin, 25);
-    drawCenteredText('DATOS DEL PASAPORTE', margin, y - 10, width - 2 * margin, 10, true);
-    y -= 30;
-
-    const passColWidth = (width - 2 * margin) / 4;
-    drawBox(margin, y, passColWidth, 20);
-    drawCenteredText('Número', margin, y - 6, passColWidth, 7, true);
-    drawCenteredText(pasaporte.numero, margin, y - 14, passColWidth, 9);
-
-    drawBox(margin + passColWidth, y, passColWidth, 20);
-    drawCenteredText('Tipo', margin + passColWidth, y - 6, passColWidth, 7, true);
-    drawCenteredText(pasaporte.tipo || 'O', margin + passColWidth, y - 14, passColWidth, 9);
-
-    drawBox(margin + passColWidth * 2, y, passColWidth, 20);
-    drawCenteredText('Fecha Expedición', margin + passColWidth * 2, y - 6, passColWidth, 7, true);
-    drawCenteredText(
-      pasaporte.fechaExpedicion
-        ? new Date(pasaporte.fechaExpedicion).toLocaleDateString('es-CU')
-        : '',
-      margin + passColWidth * 2,
-      y - 14,
-      passColWidth,
-      9,
-    );
-
-    drawBox(margin + passColWidth * 3, y, passColWidth, 20);
-    drawCenteredText('Fecha Vencimiento', margin + passColWidth * 3, y - 6, passColWidth, 7, true);
-    drawCenteredText(
-      pasaporte.fechaVencimiento
-        ? new Date(pasaporte.fechaVencimiento).toLocaleDateString('es-CU')
-        : '',
-      margin + passColWidth * 3,
-      y - 14,
-      passColWidth,
-      9,
-    );
-    y -= 25;
-
-    // Lugar de expedición
-    drawBox(margin, y, width - 2 * margin, 20);
-    drawText('Lugar de Expedición:', margin + 5, y - 8, 8, true);
-    drawText(pasaporte.lugarExpedicion || 'La Habana, Cuba', margin + 120, y - 8, 9);
-    y -= 25;
-
-    // ========== DATOS LABORALES ==========
-    drawBox(margin, y, width - 2 * margin, 25);
-    drawCenteredText('DATOS LABORALES', margin, y - 10, width - 2 * margin, 10, true);
-    y -= 30;
-
-    const laborWidth = (width - 2 * margin) / 2;
-    drawBox(margin, y, laborWidth, 20);
-    drawCenteredText('Cargo/Especialidad', margin, y - 6, laborWidth, 7, true);
-    drawCenteredText(
-      profesor.cargo?.nombre || profesor.especialidad?.nombre || '',
-      margin,
-      y - 14,
-      laborWidth,
-      9,
-    );
-
-    drawBox(margin + laborWidth, y, laborWidth, 20);
-    drawCenteredText('Centro de Trabajo', margin + laborWidth, y - 6, laborWidth, 7, true);
-    drawCenteredText('MINED', margin + laborWidth, y - 14, laborWidth, 9);
-    y -= 25;
-
-    // ========== MOTIVO DEL TRÁMITE ==========
-    drawBox(margin, y, width - 2 * margin, 25);
-    drawCenteredText('MOTIVO DEL TRÁMITE', margin, y - 10, width - 2 * margin, 10, true);
-    y -= 30;
-
-    const motivoOptions = [
-      'Primera vez',
-      'Renovación',
-      'Pérdida',
-      'Robo',
-      'Deterioro',
-      'Cambio de datos',
-    ];
-    const motivoColWidth = (width - 2 * margin) / 3;
-
-    motivoOptions.forEach((opt, idx) => {
-      const col = idx % 3;
-      const row = Math.floor(idx / 3);
-      const xPos = margin + col * motivoColWidth;
-      const yPos = y - row * 25;
-
-      drawBox(xPos, yPos, 15, 15);
-      drawText(opt, xPos + 20, yPos - 10, 8);
-    });
-    y -= 55;
-
-    // ========== OBSERVACIONES ==========
-    drawBox(margin, y, width - 2 * margin, 80);
-    drawText('OBSERVACIONES:', margin + 5, y - 12, 9, true);
-
-    // Líneas para escribir
-    for (let i = 0; i < 4; i++) {
-      const lineY = y - 25 - i * 15;
-      page.drawLine({
-        start: { x: margin + 10, y: lineY },
-        end: { x: width - margin - 10, y: lineY },
-        thickness: 0.5,
-        color: rgb(0.7, 0.7, 0.7),
-      });
-    }
-
-    // Pre-llenar con observaciones del pasaporte si existen
-    if (pasaporte.observaciones) {
-      drawText(pasaporte.observaciones.substring(0, 100), margin + 10, y - 28, 8);
-    }
-    y -= 85;
-
-    // ========== FIRMAS ==========
-    drawBox(margin, y, width - 2 * margin, 25);
-    drawCenteredText('FIRMAS Y SELLOS', margin, y - 10, width - 2 * margin, 10, true);
-    y -= 30;
-
-    // Tres columnas para firmas
-    const firmaWidth = (width - 2 * margin) / 3;
-
-    // Solicitante
-    drawBox(margin, y, firmaWidth, 60);
-    drawCenteredText('Firma del Solicitante', margin, y - 8, firmaWidth, 8, true);
-    drawCenteredText('(Ciudadano)', margin, y - 45, firmaWidth, 7);
-
-    // Funcionario
-    drawBox(margin + firmaWidth, y, firmaWidth, 60);
-    drawCenteredText('Funcionario Autorizado', margin + firmaWidth, y - 8, firmaWidth, 8, true);
-    drawCenteredText('(Dirección de Extranjería)', margin + firmaWidth, y - 45, firmaWidth, 7);
-
-    // Jefe
-    drawBox(margin + firmaWidth * 2, y, firmaWidth, 60);
-    drawCenteredText('Vo.Bo.', margin + firmaWidth * 2, y - 8, firmaWidth, 8, true);
-    drawCenteredText('(Jefe Departamento)', margin + firmaWidth * 2, y - 45, firmaWidth, 7);
-    y -= 65;
-
-    // ========== PIE DE PÁGINA ==========
-    y -= 20;
-    drawCenteredText(
-      'Documento generado por el Sistema ICE - Cooperación Internacional de Educadores',
-      margin,
-      y,
-      width - 2 * margin,
-      7,
-    );
-    y -= 12;
-    drawCenteredText(
-      `Fecha de generación: ${new Date().toLocaleString('es-CU')}`,
-      margin,
-      y,
-      width - 2 * margin,
-      7,
-    );
-
-    const pdfBytes = await pdfDoc.save();
-    return Buffer.from(pdfBytes);
+    return this.pdfGenerator.generarActaExtranjeria(data);
   }
 
   // ============================================

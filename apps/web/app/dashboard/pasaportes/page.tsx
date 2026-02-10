@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip } from "@/components/ui/tooltip";
 import { NotificationService } from "@/services/notification.service";
 import {
   Search,
@@ -395,46 +396,54 @@ export default function PasaportesPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDescargarX22(pasaporte.id)}
-                            title="Descargar Formulario X-22"
-                          >
-                            <FileText className="h-4 w-4 text-blue-600" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() =>
-                              handleDescargarActaExtranjeria(pasaporte.id)
-                            }
-                            title="Descargar Acta de Extranjería"
-                          >
-                            <ScrollText className="h-4 w-4 text-green-600" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() =>
-                              router.push(`/dashboard/tramites/${pasaporte.id}`)
-                            }
-                            title="Ver detalle"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() =>
-                              router.push(
-                                `/dashboard/tramites/${pasaporte.id}/editar`,
-                              )
-                            }
-                            title="Editar"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
+                          <Tooltip text="Descargar Formulario X-22">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDescargarX22(pasaporte.id)}
+                              className="hover:bg-blue-600 hover:text-white group"
+                            >
+                              <FileText className="h-4 w-4 text-blue-600 group-hover:text-white" />
+                            </Button>
+                          </Tooltip>
+                          <Tooltip text="Descargar Acta de Extranjería">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() =>
+                                handleDescargarActaExtranjeria(pasaporte.id)
+                              }
+                              className="hover:bg-green-600 hover:text-white group"
+                            >
+                              <ScrollText className="h-4 w-4 text-green-600 group-hover:text-white" />
+                            </Button>
+                          </Tooltip>
+                          <Tooltip text="Ver detalle">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() =>
+                                router.push(
+                                  `/dashboard/tramites/${pasaporte.id}`,
+                                )
+                              }
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Tooltip>
+                          <Tooltip text="Editar">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() =>
+                                router.push(
+                                  `/dashboard/tramites/${pasaporte.id}/editar`,
+                                )
+                              }
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </Tooltip>
                         </div>
                       </td>
                     </tr>
